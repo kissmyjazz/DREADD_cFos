@@ -1,0 +1,148 @@
+---
+title: "Statistical analysis of cFos DREADD data"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(here)
+library(forcats)
+library(broom)
+library(broom.mixed)
+library(glmmTMB)
+library(kableExtra)
+library(ggstatsplot)
+
+options(scipen=999)
+theme_set(theme_bw(base_size = 14) + theme(legend.position = "top"))
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, fig.width = 9, 
+                      fig.height = 7)
+```
+
+```{r load-data}
+path <- here("Data", "cFos_rat.csv")
+df <- readr::read_csv(path, col_types = "f_ffffidf") %>% 
+  dplyr::rename(vPFC = "Relation to vPFC Injection", 
+                vHC = "Relation to vHC Injection",
+                AnimalID = "Animal ID") %>% 
+  dplyr::mutate(Group = fct_relevel(Group, "control"))
+
+```
+
+## Gaussian linear model using vPFC as reference
+
+```{r lm} 
+df_gauss <- df %>% dplyr::select(Group, Region, vPFC, Density) %>% 
+  dplyr::nest_by(Region, vPFC) %>%
+  dplyr::mutate(model = list(lm(Density ~ Group, data = data))) %>%
+  dplyr::reframe(tidy(model)) %>% 
+  dplyr::filter(term != "(Intercept)") %>% 
+  dplyr::mutate(term = str_sub(term, 6))
+
+```
+
+
+
+```{r lm-summary}
+df_gauss_tbl <- df_gauss %>%
+  dplyr::mutate(fdr.p.adjusted = p.adjust(p.value, method = "fdr")) %>% 
+  dplyr::select(Region, "Relation to vPFC Injection" = vPFC, Group = term,  
+                "Difference in average value vs. Control group" = estimate, std.error, 
+                "Student's t" = statistic, everything()) %>% 
+  kbl() %>% 
+  kable_styling(bootstrap_options = c("striped", "condensed")) %>% 
+  row_spec(which(df_gauss$p.value < 0.05), color = "red")
+
+df_gauss_tbl
+```
+
+## Gaussian linear model using vPFC as reference, cases are weighted by the number of sections 
+
+```{r lm-weighted} 
+df_gauss_w <- df %>% dplyr::select(Group, Region, vPFC, Density, N) %>% 
+  dplyr::nest_by(Region, vPFC) %>%
+  dplyr::mutate(model = list(lm(Density ~ Group, data = data, weights = N))) %>%
+  dplyr::reframe(tidy(model)) %>% 
+  dplyr::filter(term != "(Intercept)") %>% 
+  dplyr::mutate(term = str_sub(term, 6))
+
+```
+
+```{r wlm-summary}
+df_wgauss_tbl <- df_gauss_w %>%
+  dplyr::mutate(fdr.p.adjusted = p.adjust(p.value, method = "fdr")) %>% 
+  dplyr::select(Region,  Group = term, "Relation to vPFC Injection" = vPFC,
+                "Difference in average value vs. Control group" = estimate, std.error, 
+                "Student's t" = statistic, everything()) %>% 
+  kbl() %>% 
+  kable_styling(bootstrap_options = c("striped", "condensed")) %>% 
+  row_spec(which(df_gauss_w$p.value < 0.05), color = "red")
+
+df_wgauss_tbl
+```
+
+## Gamma generalized linear model using vPFC as reference 
+
+```{r glm} 
+df_gamma <- df %>% dplyr::select(Group, Region, vPFC, Density, N) %>% 
+  dplyr::nest_by(Region, vPFC) %>%
+  dplyr::mutate(model = list(glm(Density ~ Group, data = data, 
+                                 family = Gamma(link = "identity")))) %>%
+  dplyr::reframe(tidy(model)) %>% 
+  dplyr::filter(term != "(Intercept)") %>% 
+  dplyr::mutate(term = str_sub(term, 6))
+
+```
+
+```{r glm-summary}
+df_gamma_tbl <- df_gamma %>%
+  dplyr::mutate(fdr.p.adjusted = p.adjust(p.value, method = "fdr")) %>% 
+  dplyr::select(Region, Group = term, "Relation to vPFC Injection" = vPFC, 
+                "Difference in average value vs. Control group" = estimate, std.error, 
+                "Student's t" = statistic, everything()) %>% 
+  kbl() %>% 
+  kable_styling(bootstrap_options = c("striped", "condensed")) %>% 
+  row_spec(which(df_gamma$p.value < 0.05), color = "red")
+
+df_gamma_tbl
+```
+
+## Gaussian linear model using vHC as reference
+
+```{r lm-vHC} 
+df_gauss_vHC <- df %>% dplyr::select(Group, Region, vHC, Density) %>% 
+  dplyr::nest_by(Region, vHC) %>%
+  dplyr::mutate(model = list(lm(Density ~ Group, data = data))) %>%
+  dplyr::reframe(tidy(model)) %>% 
+  dplyr::filter(term != "(Intercept)") %>% 
+  dplyr::mutate(term = str_sub(term, 6))
+
+```
+
+
+```{r lm-summary-vHC}
+df_gauss_vHC_tbl <- df_gauss_vHC %>%
+  dplyr::mutate(fdr.p.adjusted = p.adjust(p.value, method = "fdr")) %>% 
+  dplyr::select(Region,  "Relation to vHC Injection" = vHC, Group = term,
+                "Difference in average value vs. Control group" = estimate, std.error, 
+                "Student's t" = statistic, everything()) %>% 
+  kbl() %>% 
+  kable_styling(bootstrap_options = c("striped", "condensed")) %>% 
+  row_spec(which(df_gauss_vHC$p.value < 0.05), color = "red")
+
+df_gauss_vHC_tbl
+```
+
+```{r graph}
+graph <- df %>% dplyr::filter(Region == "L-SEP", vPFC == "Ipsilateral") %>% 
+  ggbetweenstats(
+    x = Group,
+    y = Density,
+    violin.args = list(width = 0),
+    ylab = "Cell density",
+    title = "Lateral septum, ipsilateral to vPFC injection"
+  )
+graph
+```
