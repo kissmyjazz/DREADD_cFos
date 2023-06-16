@@ -141,7 +141,7 @@ graph <- df %>% dplyr::filter(Region == "L-SEP", vPFC == "Ipsilateral") %>%
     x = Group,
     y = Density,
     violin.args = list(width = 0),
-    ylab = "Cell density",
+    ylab = "Label density",
     title = "Lateral septum, ipsilateral to vPFC injection"
   )
 graph
