@@ -1,0 +1,84 @@
+---
+  title: "Statistical analysis of global effect of cFos DREADD data"
+  output:
+      html_document:
+          df_print: paged
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(here)
+library(forcats)
+library(broom)
+library(broom.mixed)
+library(glmmTMB)
+library(kableExtra)
+library(ggstatsplot)
+library(estimatr)
+
+options(scipen = 999)
+theme_set(theme_bw(base_size = 14) + theme(legend.position = "top"))
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, fig.width = 9,
+                      fig.height = 7)
+```
+
+```{r load-data}
+path <- here("Data", "cFos_rat.csv")
+df <- readr::read_csv(path, col_types = "f_ffffidf") %>%
+  dplyr::rename(vPFC = "Relation to vPFC Injection",
+                vHC = "Relation to vHC Injection",
+                AnimalID = "Animal ID") %>%
+  dplyr::mutate(Group = fct_relevel(Group, "control"))
+
+```
+
+```{r standardise-data}
+df_scaled <- df %>%
+  dplyr::group_by(Region) %>%
+  dplyr::mutate(Density_scaled = scale(Density)[, 1]) %>%
+  dplyr::ungroup()
+
+```
+
+Analysis of the global effect of DREADDs on the cFos density data that were scaled within regions.
+Robust standard errors were estimated to account for possible correlations between measurements within each subject.
+
+```{r lm-global} 
+# estimating robust covariance for clustered data
+m_global <- df_scaled %>% 
+  dplyr::select(AnimalID, Group, Density_scaled) %>% 
+  lm_robust(Density_scaled ~ Group, data = ., se_type = "HC2")
+
+```
+
+```{r table}
+tbl_m <- m_global %>% tidy() %>% 
+  dplyr::select(term:conf.high) %>% 
+  dplyr::filter(term != "(Intercept)") %>% 
+  dplyr::mutate(term = str_sub(term, 6)) %>% 
+  dplyr::rename(Group = term,
+                "Difference in average value vs. Control group" = estimate,
+                "Student's t" = statistic) 
+tbl <- tbl_m %>%
+  kbl() %>% 
+  kable_styling(bootstrap_options = c("striped", "condensed")) %>% 
+  row_spec(which(tbl_m$p.value < 0.05), color = "red")
+
+tbl
+```
+
+```{r graph}
+graph <- df_scaled %>% 
+  ggbetweenstats(
+    x = Group,
+    y = Density_scaled,
+    violin.args = list(width = 0),
+    ylab = "Label density",
+    title = "Global effect of DREADD on cFos label density",
+    type = "nonparametric",
+    pairwise.display = "significant",
+    bf.message = FALSE
+    
+  )
+graph
+```

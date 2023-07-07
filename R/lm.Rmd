@@ -15,7 +15,7 @@ library(glmmTMB)
 library(kableExtra)
 library(ggstatsplot)
 
-options(scipen=999)
+options(scipen = 999)
 theme_set(theme_bw(base_size = 14) + theme(legend.position = "top"))
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, fig.width = 9, 
                       fig.height = 7)
@@ -30,6 +30,7 @@ df <- readr::read_csv(path, col_types = "f_ffffidf") %>%
   dplyr::mutate(Group = fct_relevel(Group, "control"))
 
 ```
+
 
 ## Gaussian linear model using vPFC as reference
 
@@ -133,6 +134,31 @@ df_gauss_vHC_tbl <- df_gauss_vHC %>%
   row_spec(which(df_gauss_vHC$p.value < 0.05), color = "red")
 
 df_gauss_vHC_tbl
+```
+
+```{r graph}
+graph <- df %>% dplyr::filter(Region == "L-SEP", vPFC == "Ipsilateral") %>% 
+  ggbetweenstats(
+    x = Group,
+    y = Density,
+    violin.args = list(width = 0),
+    ylab = "Label density",
+    title = "Lateral septum, ipsilateral to vPFC injection"
+  )
+graph
+```
+
+## Analysis of the global effect of cFos on scaled within regions density data
+
+```{r lm-global} 
+df_gauss_global <- df_scaled %>% 
+  dplyr::select(Group, Density_scaled) %>% 
+  dplyr::nest_by() %>%
+  dplyr::mutate(model = list(lm(Density_scaled ~ Group, data = data))) %>%
+  dplyr::reframe(tidy(model)) %>% 
+  dplyr::filter(term != "(Intercept)") %>% 
+  dplyr::mutate(term = str_sub(term, 6))
+
 ```
 
 ```{r graph}
